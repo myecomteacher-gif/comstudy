@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>학교 주변 탐방 (문화재 & 맛집 찾기)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=c4caad7a6eb9668b5680d16bd843162d&libraries=services&autoload=false"></script>
+    
+    <style>
+        body { font-family: 'Malgun Gothic', dotum, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col">
+
+    <header class="bg-indigo-600 text-white py-6 shadow-md text-center">
+        <h1 class="text-2xl font-bold">🏫 우리 학교 주변 탐방기 🗺️</h1>
+        <p class="text-sm mt-1 text-indigo-100">문화재와 숨은 맛집을 한눈에 확인하는 교육 서비스</p>
+    </header>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <div class="md:col-span-1 bg-white p-4 rounded-xl shadow-sm flex flex-col h-[650px]">
+            <div class="mb-4">
+                <label for="schoolInput" class="block text-sm font-medium text-gray-700 mb-1">학교명 입력</label>
+                <div class="flex gap-2">
+                    <input type="text" id="schoolInput" placeholder="예: 울산중앙중학교" 
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <button onclick="searchSchool()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium transition">
+                        검색
+                    </button>
+                </div>
+            </div>
+
+            <div id="schoolInfo" class="hidden p-3 bg-indigo-50 rounded-lg border border-indigo-100 mb-3 text-sm">
+                <p class="font-bold text-indigo-900" id="infoSchoolName"></p>
+                <p class="text-gray-600 mt-1" id="infoSchoolAddr"></p>
+            </div>
+
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <div class="text-center font-bold text-sm text-gray-700 border-b-2 border-indigo-600 pb-1">🏛️ 주변 문화재</div>
+                    <div class="text-center font-bold text-sm text-gray-700 border-b-2 border-red-500 pb-1">🍕 추천 맛집</div>
+                </div>
+                
+                <div class="flex-1 grid grid-cols-2 gap-2 overflow-hidden text-xs">
+                    <div id="cultureList" class="overflow-y-auto space-y-2 pr-1 border-r border-gray-100">
+                        <p class="text-gray-400 text-center py-8">학교를 검색해 주세요.</p>
+                    </div>
+                    <div id="restaurantList" class="overflow-y-auto space-y-2 pl-1">
+                        <p class="text-gray-400 text-center py-8">학교를 검색해 주세요.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="md:col-span-2 bg-white p-2 rounded-xl shadow-sm h-[650px]">
+            <div id="map" class="w-full h-full rounded-lg bg-gray-100 flex items-center justify-center">
+                <p class="text-gray-500 font-medium" id="mapLoadingMessage">지도를 안전하게 연결하는 중입니다...</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-100 text-center py-3 text-xs text-gray-500 border-t border-gray-200">
+        본 서비스는 NEIS 교육정보 개방포털 및 네이버/카카오 오픈 API를 활용합니다.
+    </footer>
+
+    <script>
+        // 발급받은 API 인증키 매핑
+        const NEIS_KEY = '33c092b44b2a407fa35f73c29bbac986';
+        const NAVER_CLIENT_ID = '1hdDqbowiA1acx7m4c8N';
+        
+        let map;
+        let ps;
+        let infowindow;
+        let markers = [];
+        let isMapLoaded = false; // 지도 로딩 완료 플래그
+
+        // 페이지 로드 시 카카오 지도 안전 비동기 초기화
+        window.onload = function() {
+            if (typeof kakao === 'undefined') {
+                document.getElementById('mapLoadingMessage').innerHTML = "<span class='text-red-500'>❌ 카카오 SDK 로드 실패 (플랫폼 도메인을 확인하세요!)</span>";
+                return;
+            }
+
+            kakao.maps.load(function() {
+                document.getElementById('mapLoadingMessage').style.display = 'none';
+                const mapContainer = document.getElementById('map');
+                const mapOption = {
+                    center: new kakao.maps.LatLng(35.538377, 129.311359), // 초기 중심: 울산
+                    level: 4
+                };
+                map = new kakao.maps.Map(mapContainer, mapOption);
+                ps = new kakao.maps.services.Places();
+                infowindow = new kakao.maps.InfoWindow({zIndex:1});
+                
+                isMapLoaded = true; // 지도 준비 완료 선언!
+                console.log("카카오 지도 완벽 준비 완료");
+            });
+        };
+
+        // 1. 최신 NEIS 표준 API 기반 학교 검색
+        async function searchSchool() {
+            // 안전장치: 지도가 다 안 켜졌는데 검색 버튼을 먼저 눌렀을 때 차단
+            if (!isMapLoaded) {
+                alert("카카오 지도 라이브러리가 로딩 중입니다. 잠시 후 다시 검색해 주세요!");
+                return;
+            }
+
+            const schoolName = document.getElementById('schoolInput').value.trim();
+            if (!schoolName) {
+                alert('학교명을 입력해주세요!');
+                return;
+            }
+
+            // 최신 표준 API 주소 활용 [cite: 177]
+            const url = `https://open.neis.go.kr/hub/schoolInfo?KEY=${NEIS_KEY}&Type=json&pIndex=1&pSize=5&SCHUL_NM=${encodeURIComponent(schoolName)}`;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`네트워크 응답 에러 (${response.status})`);
+                const data = await response.json();
+
+                if (data.schoolInfo && data.schoolInfo[1] && data.schoolInfo[1].row) {
+                    const school = data.schoolInfo[1].row[0]; 
+                    const sName = school.SCHUL_NM;
+                    const sAddr = school.ORG_RDNMA || school.ORG_LNMADDR; // 도로명 또는 지번
+                    
+                    if (!sAddr) {
+                        alert('학교 주소 정보가 존재하지 않습니다.');
+                        return;
+                    }
+
+                    displaySchoolInfo(sName, sAddr);
+                    
+                    // 주소를 좌표로 변환 후 탐색 시작 (이미 maps.load 내부이므로 'kakao is not defined'가 절대 안 남)
+                    searchCoordinatesAndDiscover(sAddr, sName);
+                } else {
+                    alert('검색된 학교가 없습니다. 정확한 이름을 입력해 주세요.');
+                }
+            } catch (error) {
+                console.error('NEIS 호출 중 에러:', error);
+                alert(`NEIS API 호출 중 오류가 발생했습니다.\n원인: ${error.message}`);
+            }
+        }
+
+        function displaySchoolInfo(name, addr) {
+            document.getElementById('schoolInfo').classList.remove('hidden');
+            document.getElementById('infoSchoolName').innerText = `🏫 ${name}`;
+            document.getElementById('infoSchoolAddr').innerText = addr;
+        }
+
+        // 2. 학교 좌표 변환 및 문화재/맛집 탐색 트리거
+        function searchCoordinatesAndDiscover(address, schoolName) {
+            const geocoder = new kakao.maps.services.Geocoder();
+
+            geocoder.addressSearch(address, function(result, status) {
+                if (status === kakao.maps.services.Status.OK) {
+                    const coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+                    
+                    map.setCenter(coords);
+                    removeMarkers();
+
+                    // 학교 마커 표시
+                    const schoolMarker = new kakao.maps.Marker({ map: map, position: coords });
+                    markers.push(schoolMarker);
+                    
+                    infowindow.setContent(`<div style="padding:5px;font-size:11px;font-weight:bold;text-align:center;">${schoolName}</div>`);
+                    infowindow.open(map, schoolMarker);
+
+                    // 3. 주변 데이터 동시 탑재
+                    searchLocalCulture(coords);
+                    searchNaverRestaurants(schoolName);
+                } else {
+                    alert('학교 위치를 좌표로 변환하는 데 실패했습니다.');
+                }
+            });
+        }
+
+        // 3. 카카오 맵 API 기반 주변 문화재 검색
+        function searchLocalCulture(coords) {
+            const cultureList = document.getElementById('cultureList');
+            cultureList.innerHTML = '<p class="text-gray-400 text-center py-4">조회 중...</p>';
+
+            ps.keywordSearch('문화재', function(data, status) {
+                cultureList.innerHTML = '';
+                if (status === kakao.maps.services.Status.OK) {
+                    data.forEach((place, index) => {
+                        const placePosition = new kakao.maps.LatLng(place.y, place.x);
+                        
+                        // 문화재 마커 추가
+                        const marker = new kakao.maps.Marker({ position: placePosition, map: map });
+                        markers.push(marker);
+
+                        const openInfoWindow = () => {
+                            infowindow.setContent(`<div style="padding:5px;font-size:11px;"><strong>${place.place_name}</strong></div>`);
+                            infowindow.open(map, marker);
+                        };
+                        kakao.maps.event.addListener(marker, 'click', openInfoWindow);
+
+                        // 리스트 생성
+                        const item = document.createElement('div');
+                        item.className = 'p-2 bg-indigo-50 border border-indigo-100 rounded hover:bg-indigo-100 cursor-pointer transition';
+                        item.innerHTML = `<strong>${index + 1}. ${place.place_name}</strong><div class="text-gray-500 mt-0.5">${place.distance}m</div>`;
+                        item.onclick = () => { map.panTo(placePosition); openInfoWindow(); };
+                        cultureList.appendChild(item);
+                    });
+                } else {
+                    cultureList.innerHTML = '<p class="text-gray-400 text-center py-4">주변에 문화재가 없습니다.</p>';
+                }
+            }, { location: coords, radius: 2000, sort: kakao.maps.services.SortBy.DISTANCE });
+        }
+
+        // 4. 네이버 API 기반 주변 맛집 검색 (CORS 프록시 사용)
+        function searchNaverRestaurants(schoolName) {
+            const restaurantList = document.getElementById('restaurantList');
+            restaurantList.innerHTML = '<p class="text-gray-400 text-center py-4">조회 중...</p>';
+
+            const proxyUrl = "https://cors-anywhere.herokuapp.com/";
+            const query = `${schoolName} 맛집`;
+            const naverUrl = `https://openapi.naver.com/v1/search/local.json?query=${encodeURIComponent(query)}&display=5&start=1&sort=comment`;
+
+            fetch(proxyUrl + naverUrl, {
+                method: "GET",
+                headers: {
+                    "X-Naver-Client-Id": NAVER_CLIENT_ID,
+                    "X-Naver-Client-Secret": "vGmR9vxvkW" // ★본인의 네이버 Secret 키를 꼭 입력하세요! 
+                }
+            })
+            .then(res => {
+                if (!res.ok) throw new Error("네이버 API 인증 실패 또는 프록시 권한 유실");
+                return res.json();
+            })
+            .then(data => {
+                restaurantList.innerHTML = '';
+                if (data.items && data.items.length > 0) {
+                    data.items.forEach((item, index) => {
+                        const cleanTitle = item.title.replace(/<[^>]*>?/g, ''); // <b> 태그 제거
+                        
+                        // 주소 기반 카카오 지도 마커 표시
+                        const geocoder = new kakao.maps.services.Geocoder();
+                        geocoder.addressSearch(item.roadAddress || item.address, function(result, status) {
+                            if (status === kakao.maps.services.Status.OK) {
+                                const placePosition = new kakao.maps.LatLng(result[0].y, result[0].x);
+                                const marker = new kakao.maps.Marker({ position: placePosition, map: map });
+                                markers.push(marker);
+
+                                const openInfoWindow = () => {
+                                    infowindow.setContent(`<div style="padding:5px;font-size:11px;color:red;"><strong>${cleanTitle}</strong></div>`);
+                                    infowindow.open(map, marker);
+                                };
+                                kakao.maps.event.addListener(marker, 'click', openInfoWindow);
+
+                                // 맛집 리스트 아이템 추가
+                                const listItem = document.createElement('div');
+                                listItem.className = 'p-2 bg-red-50 border border-red-100 rounded hover:bg-red-100 cursor-pointer transition';
+                                listItem.innerHTML = `<strong>${index + 1}. ${cleanTitle}</strong><div class="text-gray-500 mt-0.5">${item.category}</div>`;
+                                listItem.onclick = () => { map.panTo(placePosition); openInfoWindow(); };
+                                restaurantList.appendChild(listItem);
+                            }
+                        });
+                    });
+                } else {
+                    restaurantList.innerHTML = '<p class="text-gray-400 text-center py-4">맛집 결과가 없습니다.</p>';
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                restaurantList.innerHTML = '<p class="text-red-500 text-center py-4 font-bold">네이버 API 호출 실패</p>';
+            });
+        }
+
+        function removeMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+        }
+    </script>
+</body>
+</html>
