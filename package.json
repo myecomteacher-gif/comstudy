@@ -1,0 +1,14 @@
+{
+  "name": "round-table-reservation",
+  "version": "1.0.0",
+  "description": "원탁토론실 사용 예약 시스템",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
