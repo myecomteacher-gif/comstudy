@@ -1,244 +1,358 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>원탁토론실 사용 예약 시스템</title>
-    <!-- Google Fonts for Modern Typography -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- FontAwesome for Premium Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>중학교 원탁토의실 사용예약 시스템</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="중학교 원탁토의실의 사용 현황을 확인하고, 간편하게 예약 및 관리할 수 있는 시스템입니다.">
+  <meta name="keywords" content="원탁토의실, 예약 시스템, 학교 예약, 토의실 예약">
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-    <div class="app-container">
-        <!-- Sidebar Section -->
-        <aside class="sidebar">
-            <div class="brand">
-                <i class="fa-solid fa-comments-dollar brand-icon"></i>
-                <div class="brand-text">
-                    <h1>원탁토론실</h1>
-                    <span>사용 예약 시스템</span>
-                </div>
-            </div>
-
-            <!-- Date Range Information Card -->
-            <div class="info-card">
-                <div class="info-card-header">
-                    <i class="fa-solid fa-circle-info"></i>
-                    <h3>이용 안내</h3>
-                </div>
-                <div class="info-card-content">
-                    <p><strong class="highlight">운영 기간:</strong> 2026년 6월 ~ 2027년 2월</p>
-                    <p><strong class="highlight">운영 요일:</strong> 평일(월~금) 일과 중</p>
-                    <p><strong class="highlight">요일별 운영:</strong></p>
-                    <ul>
-                        <li>월 · 화 : 1 ~ 7교시 + 방과후</li>
-                        <li>수 · 목 · 금 : 1 ~ 6교시 + 방과후</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Search Card -->
-            <div class="sidebar-widget">
-                <h3><i class="fa-solid fa-magnifying-glass"></i> 예약 검색</h3>
-                <div class="search-box">
-                    <input type="text" id="search-input" placeholder="이름 또는 용도로 검색...">
-                    <i class="fa-solid fa-search search-icon"></i>
-                </div>
-                <div id="search-results" class="search-results-list">
-                    <!-- Dynamic search results go here -->
-                </div>
-            </div>
-
-            <!-- Quick Action / Statistics -->
-            <div class="sidebar-widget stats-widget">
-                <h3><i class="fa-solid fa-chart-simple"></i> 예약 현황 요약</h3>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">이번주 예약</span>
-                        <span id="stat-week-count" class="stat-value">0건</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">누적 예약</span>
-                        <span id="stat-total-count" class="stat-value">0건</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Admin Menu Widget -->
-            <div class="sidebar-widget" id="admin-widget">
-                <h3><i class="fa-solid fa-user-shield"></i> 관리자 메뉴</h3>
-                <div id="admin-login-box">
-                    <div class="form-group" style="margin-bottom: 0.5rem;">
-                        <input type="text" id="admin-id" placeholder="관리자 ID" style="padding: 0.5rem; font-size: 0.8rem; width: 100%;">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0.5rem;">
-                        <input type="password" id="admin-pw" placeholder="비밀번호" style="padding: 0.5rem; font-size: 0.8rem; width: 100%;">
-                    </div>
-                    <button id="admin-login-btn" class="btn btn-primary" style="width: 100%; padding: 0.5rem; font-size: 0.8rem; margin-top: 0.25rem;">
-                        관리자 로그인
-                    </button>
-                </div>
-                <div id="admin-info-box" style="display: none; text-align: center;">
-                    <div style="color: var(--accent); font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem;">
-                        <i class="fa-solid fa-shield-halved"></i> 관리자 모드 실행 중
-                    </div>
-                    <button id="admin-logout-btn" class="btn btn-danger" style="width: 100%; padding: 0.5rem; font-size: 0.8rem;">
-                        로그아웃
-                    </button>
-                </div>
-            </div>
-
-            <!-- Import / Export Backup Widget -->
-            <div class="sidebar-widget backup-widget">
-                <h3><i class="fa-solid fa-database"></i> 데이터 관리</h3>
-                <div class="backup-buttons">
-                    <button id="export-btn" class="btn btn-secondary">
-                        <i class="fa-solid fa-download"></i> 백업 내보내기
-                    </button>
-                    <button id="import-btn-trigger" class="btn btn-secondary">
-                        <i class="fa-solid fa-upload"></i> 백업 가져오기
-                    </button>
-                    <input type="file" id="import-file" accept=".json" style="display: none;">
-                </div>
-            </div>
-            
-            <div class="sidebar-footer">
-                <p>&copy; 2026 Round-Table Reservation</p>
-            </div>
-        </aside>
-
-        <!-- Main Workspace -->
-        <main class="main-content">
-            <!-- Top Navigation / Controls -->
-            <header class="main-header">
-                <div class="date-navigator">
-                    <button id="prev-week-btn" class="nav-btn" title="이전 주">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <div class="current-date-range">
-                        <i class="fa-solid fa-calendar-days calendar-icon"></i>
-                        <span id="current-week-label">2026년 06월 01일 ~ 06월 05일</span>
-                    </div>
-                    <button id="next-week-btn" class="nav-btn" title="다음 주">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                </div>
-                
-                <div class="header-actions">
-                    <div class="date-picker-wrapper">
-                        <input type="date" id="date-select-picker" min="2026-06-01" max="2027-02-28">
-                    </div>
-                    <button id="today-btn" class="btn btn-primary-outline">오늘</button>
-                    <button id="new-booking-btn" class="btn btn-primary">
-                        <i class="fa-solid fa-plus"></i> 신규 예약 신청
-                    </button>
-                </div>
-            </header>
-
-            <!-- Main Schedule Grid Wrapper -->
-            <div class="grid-container-card">
-                <div class="timetable-grid" id="timetable-grid">
-                    <!-- Row headers (Time/Periods) and Columns (Days) will be generated by app.js -->
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <!-- Booking Form Modal (Create / Edit) -->
-    <div id="booking-modal" class="modal-overlay">
-        <div class="modal-box">
-            <div class="modal-header">
-                <h2 id="modal-title">원탁토론실 예약 신청</h2>
-                <button class="modal-close" id="close-modal-btn">&times;</button>
-            </div>
-            <form id="booking-form" class="modal-form">
-                <input type="hidden" id="booking-id">
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="booking-date"><i class="fa-solid fa-calendar"></i> 예약 날짜</label>
-                        <input type="date" id="booking-date" required min="2026-06-01" max="2027-02-28">
-                    </div>
-                    <div class="form-group">
-                        <label for="booking-period"><i class="fa-solid fa-clock"></i> 사용 교시</label>
-                        <select id="booking-period" required>
-                            <option value="">교시를 선택하세요</option>
-                            <option value="1">1교시 (09:00 - 09:50)</option>
-                            <option value="2">2교시 (10:00 - 10:50)</option>
-                            <option value="3">3교시 (11:00 - 11:50)</option>
-                            <option value="lunch">점심시간 (11:50 - 13:00)</option>
-                            <option value="4">4교시 (13:00 - 13:50)</option>
-                            <option value="5">5교시 (14:00 - 14:50)</option>
-                            <option value="6">6교시 (15:00 - 15:50)</option>
-                            <option value="7">7교시 (16:00 - 16:50)</option>
-                            <option value="afterschool">방과후 (17:00 ~)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="booking-name"><i class="fa-solid fa-user"></i> 신청자 이름</label>
-                    <input type="text" id="booking-name" required placeholder="신청자 성함을 입력해주세요.">
-                </div>
-
-                <div class="form-group">
-                    <label for="booking-purpose"><i class="fa-solid fa-pen-to-square"></i> 사용 용도</label>
-                    <textarea id="booking-purpose" required placeholder="예: 국어 수행평가 모둠 토론, 학급 회의 등" rows="3"></textarea>
-                </div>
-
-                <div class="form-group" id="booking-password-group">
-                    <label for="booking-password"><i class="fa-solid fa-lock"></i> 예약 비밀번호 (4자리 숫자)</label>
-                    <input type="password" id="booking-password" required maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="수정/삭제 시 사용할 비밀번호 4자리">
-                    <small class="form-help" id="password-help-text">예약을 수정하거나 삭제할 때 본인 확인용으로 사용됩니다.</small>
-                </div>
-
-                <div id="admin-bypass-banner" style="display: none; margin-bottom: 0.5rem;">
-                    <div style="background: rgba(6, 182, 212, 0.1); border: 1px dashed var(--accent); color: var(--accent); padding: 0.75rem; border-radius: var(--border-radius-sm); text-align: center; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-                        <i class="fa-solid fa-shield-halved"></i> 관리자 권한으로 비밀번호 없이 수정/삭제 가능
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button type="button" id="delete-booking-btn" class="btn btn-danger" style="display: none;">
-                        <i class="fa-solid fa-trash"></i> 예약 삭제
-                    </button>
-                    <div class="modal-action-buttons">
-                        <button type="button" class="btn btn-secondary-outline" id="cancel-booking-btn">취소</button>
-                        <button type="submit" class="btn btn-primary" id="save-booking-btn">예약 완료</button>
-                    </div>
-                </div>
-            </form>
+<body class="light-mode">
+  <div class="app-container">
+    
+    <!-- Top Navigation Header -->
+    <header class="main-header">
+      <div class="logo-area">
+        <span class="material-icons-round logo-icon">groups</span>
+        <div class="title-group">
+          <h1>원탁토의실 사용예약 시스템</h1>
+          <p class="subtitle">Roundtable Discussion Room Reservation</p>
         </div>
-    </div>
-
-    <!-- Password Prompt Modal for Edit/Delete -->
-    <div id="password-modal" class="modal-overlay">
-        <div class="modal-box modal-sm">
-            <div class="modal-header">
-                <h2>비밀번호 확인</h2>
-                <button class="modal-close" id="close-password-modal-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p>예약을 수정하거나 삭제하려면 비밀번호 4자리를 입력해주세요.</p>
-                <div class="form-group password-prompt-group">
-                    <input type="password" id="prompt-password-input" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="••••" required autofocus>
-                    <div id="password-error-msg" class="error-msg">비밀번호가 일치하지 않습니다.</div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary-outline" id="cancel-password-btn">취소</button>
-                <button type="button" class="btn btn-primary" id="confirm-password-btn">확인</button>
-            </div>
+      </div>
+      
+      <div class="header-controls">
+        <div class="live-clock" id="live-clock">
+          <span class="material-icons-round">schedule</span>
+          <span id="clock-text">2026. 06. 23. (화) 13:40</span>
         </div>
+        
+        <button id="theme-toggle" class="icon-btn" aria-label="테마 전환">
+          <span class="material-icons-round">dark_mode</span>
+        </button>
+        
+        <button id="admin-btn" class="btn btn-secondary">
+          <span class="material-icons-round">admin_panel_settings</span>
+          <span id="admin-btn-text">관리자 로그인</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Admin Badge Alert (Visible only when logged in) -->
+    <div id="admin-badge-bar" class="admin-badge-bar hidden">
+      <div class="admin-badge-content">
+        <span class="material-icons-round">security</span>
+        <span><strong>관리자 모드</strong>로 로그인되었습니다. 모든 예약의 수정/삭제 및 날짜 예약 차단이 가능합니다.</span>
+      </div>
+      <button id="admin-logout-btn" class="btn btn-sm btn-danger">로그아웃</button>
     </div>
 
-    <!-- Toast Notification Container -->
-    <div id="toast-container" class="toast-container"></div>
+    <!-- Main Container Layout -->
+    <main class="main-content">
+      
+      <!-- Left Sidebar / Info Panel -->
+      <aside class="info-sidebar">
+        <div class="card guide-card">
+          <h3><span class="material-icons-round text-primary">info</span> 이용 안내</h3>
+          <ul>
+            <li><strong>사용 기간:</strong> 2026년 6월 ~ 2027년 1월</li>
+            <li><strong>예약 방법:</strong> 달력의 원하는 날짜를 클릭하여 신청서를 작성합니다.</li>
+            <li><strong>수정/취소:</strong> 신청 시 입력한 비밀번호를 통해 수정 또는 취소가 가능합니다.</li>
+            <li><strong>주의 사항:</strong> 토의실 사용 후 정돈을 철저히 하고 퇴실해 주세요.</li>
+          </ul>
+        </div>
 
-    <script src="app.js"></script>
+        <div class="card status-summary-card">
+          <h3><span class="material-icons-round text-success">analytics</span> 예약 현황 요약</h3>
+          <div class="summary-stats">
+            <div class="stat-item">
+              <span class="stat-num" id="total-reservations-count">0</span>
+              <span class="stat-label">전체 예약 건수</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" id="monthly-reservations-count">0</span>
+              <span class="stat-label">이번 달 예약</span>
+            </div>
+          </div>
+          <div class="legend-list">
+            <div class="legend-item">
+              <span class="legend-color color-available"></span>
+              <span class="legend-text">예약 가능 (모든 시간 비어있음)</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-color color-partial"></span>
+              <span class="legend-text">일부 예약됨 (일부 교시만 예약)</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-color color-full"></span>
+              <span class="legend-text">완료됨 (모든 교시 예약 완료)</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-color color-blocked"></span>
+              <span class="legend-text">예약 불가 (학교 행사 또는 관리자 차단)</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right Main Calendar Section -->
+      <section class="calendar-section card">
+        <div class="calendar-header">
+          <button id="prev-month-btn" class="icon-btn" aria-label="이전 달">
+            <span class="material-icons-round">chevron_left</span>
+          </button>
+          <h2 id="current-month-label" class="current-month-label">2026년 6월</h2>
+          <button id="next-month-btn" class="icon-btn" aria-label="다음 달">
+            <span class="material-icons-round">chevron_right</span>
+          </button>
+        </div>
+
+        <div class="calendar-grid-header">
+          <div class="day-name sunday">일</div>
+          <div class="day-name">월</div>
+          <div class="day-name">화</div>
+          <div class="day-name">수</div>
+          <div class="day-name">목</div>
+          <div class="day-name">금</div>
+          <div class="day-name saturday">토</div>
+        </div>
+
+        <div class="calendar-grid-body" id="calendar-grid">
+          <!-- Calendar Days generated by JS -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+      <p>&copy; 2026 중학교 원탁토의실 예약 시스템. All rights reserved.</p>
+    </footer>
+
+  </div>
+
+  <!-- Modal 1: Reservation Request Modal -->
+  <div id="reservation-modal" class="modal-overlay hidden">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2><span class="material-icons-round text-primary">add_box</span> 원탁토의실 사용 예약 신청</h2>
+        <button class="icon-btn close-modal-btn" aria-label="닫기">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <form id="reservation-form" class="modal-body">
+        <div class="form-group">
+          <label for="res-date">예약 희망일</label>
+          <input type="text" id="res-date" class="form-control" readonly>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="res-name">예약자 성함</label>
+            <input type="text" id="res-name" class="form-control" placeholder="예: 홍길동 (3학년 1반)" required>
+          </div>
+          <div class="form-group">
+            <label for="res-password">비밀번호 (4자리 숫자)</label>
+            <input type="password" id="res-password" class="form-control" placeholder="수정/취소용 비밀번호" pattern="[0-9]{4}" minlength="4" maxlength="4" inputmode="numeric" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>예약 시간 선택 (중복 선택 가능)</label>
+          <div class="time-slot-grid" id="time-slot-container">
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="1교시">
+              <span class="chip-label">1교시 (09:00~09:45)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="2교시">
+              <span class="chip-label">2교시 (09:55~10:40)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="3교시">
+              <span class="chip-label">3교시 (10:50~11:35)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="4교시">
+              <span class="chip-label">4교시 (11:45~12:30)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="점심시간">
+              <span class="chip-label">점심시간 (12:30~13:30)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="5교시">
+              <span class="chip-label">5교시 (13:30~14:15)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="6교시">
+              <span class="chip-label">6교시 (14:25~15:10)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="7교시">
+              <span class="chip-label">7교시 (15:20~16:05)</span>
+            </label>
+            <label class="time-slot-chip">
+              <input type="checkbox" name="time_slots" value="방과후">
+              <span class="chip-label">방과후 (16:15~)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="res-purpose">사용 목적 / 주제</label>
+          <textarea id="res-purpose" class="form-control" rows="3" placeholder="예: 국어 수행평가 모둠 활동 및 독서 토론" required></textarea>
+        </div>
+
+        <!-- Admin Only Section in Create Modal -->
+        <div id="admin-block-control" class="form-group hidden admin-only-field">
+          <div class="custom-control">
+            <label class="toggle-switch">
+              <input type="checkbox" id="admin-block-date-checkbox">
+              <span class="slider round"></span>
+            </label>
+            <span class="toggle-label text-danger"><strong>이 날짜를 예약 차단(Block)으로 설정</strong></span>
+          </div>
+          <p class="help-text">설정 시 일반 사용자는 이 날짜에 예약할 수 없게 됩니다.</p>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary close-modal-btn">취소</button>
+          <button type="submit" class="btn btn-primary">예약 신청하기</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Reservation Detail & Edit/Cancel Modal -->
+  <div id="detail-modal" class="modal-overlay hidden">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2 id="detail-title"><span class="material-icons-round text-success">event_available</span> 예약 상세 정보</h2>
+        <button class="icon-btn close-modal-btn" aria-label="닫기">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      
+      <!-- View Mode -->
+      <div id="detail-view-mode" class="modal-body">
+        <div class="detail-grid">
+          <div class="detail-row">
+            <span class="detail-label">예약 날짜:</span>
+            <span class="detail-value" id="view-res-date">2026년 6월 23일</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">예약자:</span>
+            <span class="detail-value" id="view-res-name">홍길동</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">예약 시간:</span>
+            <span class="detail-value" id="view-res-time">3교시, 4교시</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">사용 목적:</span>
+            <span class="detail-value" id="view-res-purpose">독서 동아리 모임</span>
+          </div>
+        </div>
+
+        <!-- Password input block for edit/cancel verification -->
+        <div class="password-check-box" id="password-check-block">
+          <label for="action-password">예약 수정/삭제를 위해 비밀번호 4자리를 입력하세요:</label>
+          <div class="password-input-wrapper">
+            <input type="password" id="action-password" class="form-control text-center" placeholder="비밀번호 숫자 4자리" pattern="[0-9]{4}" minlength="4" maxlength="4" inputmode="numeric">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <div class="footer-left">
+            <button type="button" id="detail-delete-btn" class="btn btn-danger">
+              <span class="material-icons-round">delete</span> 예약 취소(삭제)
+            </button>
+          </div>
+          <div class="footer-right">
+            <button type="button" id="detail-edit-btn" class="btn btn-warning">
+              <span class="material-icons-round">edit</span> 예약 수정
+            </button>
+            <button type="button" class="btn btn-secondary close-modal-btn">닫기</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit Mode Form -->
+      <form id="detail-edit-form" class="modal-body hidden">
+        <input type="hidden" id="edit-res-id">
+        <div class="form-group">
+          <label>예약 일자</label>
+          <input type="text" id="edit-res-date" class="form-control" readonly>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="edit-res-name">예약자 성함</label>
+            <input type="text" id="edit-res-name" class="form-control" required>
+          </div>
+          <div class="form-group" id="edit-new-password-group">
+            <label for="edit-new-password">새 비밀번호 (변경 시에만 입력)</label>
+            <input type="password" id="edit-new-password" class="form-control" placeholder="숫자 4자리" pattern="[0-9]{4}" minlength="4" maxlength="4" inputmode="numeric">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>예약 시간 선택 (중복 선택 가능)</label>
+          <div class="time-slot-grid" id="edit-time-slot-container">
+            <!-- Dynamically populated edit checkboxes -->
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="edit-res-purpose">사용 목적 / 주제</label>
+          <textarea id="edit-res-purpose" class="form-control" rows="3" required></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="edit-cancel-btn" class="btn btn-secondary">수정 취소</button>
+          <button type="submit" class="btn btn-primary">수정 완료</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Admin Login Modal -->
+  <div id="admin-login-modal" class="modal-overlay hidden">
+    <div class="modal-container modal-sm">
+      <div class="modal-header">
+        <h2><span class="material-icons-round text-primary">security</span> 관리자 로그인</h2>
+        <button class="icon-btn close-modal-btn" aria-label="닫기">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <form id="admin-login-form" class="modal-body">
+        <div class="form-group">
+          <label for="admin-username">아이디</label>
+          <input type="text" id="admin-username" class="form-control" placeholder="admin" required>
+        </div>
+        <div class="form-group">
+          <label for="admin-password">비밀번호</label>
+          <input type="password" id="admin-password" class="form-control" placeholder="••••" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary close-modal-btn">취소</button>
+          <button type="submit" class="btn btn-primary w-100">로그인</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification System -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/app.js"></script>
 </body>
 </html>

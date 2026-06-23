@@ -1,14 +1,14 @@
 {
-  "name": "round-table-reservation",
+  "name": "roundtable-reservation",
   "version": "1.0.0",
-  "description": "원탁토론실 사용 예약 시스템",
-  "main": "index.html",
+  "description": "Roundtable Reservation System for Middle School",
+  "main": "server.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
-  "devDependencies": {
-    "vite": "^5.0.0"
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
   }
 }
