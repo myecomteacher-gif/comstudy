@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>둥근마루 원탁토의실 예약 시스템</title>
+  <meta name="description" content="중학교 교직원용 둥근마루 원탁토의실 사용 예약 및 관리 대시보드">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- 상단 네비게이션 및 타이틀 바 -->
+  <header>
+    <div class="header-container">
+      <div class="logo-section">
+        <div class="logo-icon">⚪</div>
+        <div class="logo-text">
+          <h1>둥근마루 원탁토의실 예약</h1>
+          <p>Middle School Round-Table Room Reservation System</p>
+        </div>
+      </div>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <span style="font-size: 0.75rem; background: rgba(99, 102, 241, 0.2); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 10px; border-radius: 20px; font-weight: 600;">교사 전용</span>
+        <span style="font-size: 0.75rem; background: rgba(168, 85, 247, 0.2); color: var(--secondary); border: 1px solid rgba(168, 85, 247, 0.3); padding: 4px 10px; border-radius: 20px; font-weight: 600;">실 전체 대관</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 콘텐츠 영역 -->
+  <main>
+    <!-- 사이드바: 통계 및 퀵 네비게이션 -->
+    <section class="sidebar">
+      <!-- 대시보드 통계 카드 -->
+      <div class="card">
+        <h2 class="card-title">📊 예약 현황 요약</h2>
+        <div class="stat-grid">
+          <div class="stat-item">
+            <span class="stat-value" id="statTotalBookings">0</span>
+            <span class="stat-label">누적 예약 건수</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="statTodayAvailable">0</span>
+            <span class="stat-label">오늘 대관 가능 차시</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="statTopTeacher" style="font-size: 1.1rem; word-break: break-all;">-</span>
+            <span class="stat-label">최다 대관 교사</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 다가오는 대관 일정 카드 -->
+      <div class="card">
+        <h2 class="card-title">📅 다가오는 대관 일정</h2>
+        <div class="booking-list" id="upcomingBookingList">
+          <div class="no-bookings">불러오는 중...</div>
+        </div>
+      </div>
+
+      <!-- 이용 규칙 가이드 박스 -->
+      <div class="guide-box">
+        <h3>💡 원탁토의실 이용 안내</h3>
+        <ul>
+          <li><strong>대관 대상:</strong> 본교 교직원 (수업 및 회의 목적)</li>
+          <li><strong>대관 범위:</strong> 실 전체 사용 예약 (좌석 지정 불가)</li>
+          <li><strong>예약 가능 기간:</strong> 2026년 7월 ~ 2027년 1월</li>
+          <li><strong>월·화요일:</strong> 1 ~ 7교시, 점심, 방과후 운영</li>
+          <li><strong>수·목·금요일:</strong> 1 ~ 6교시, 점심, 방과후 운영</li>
+          <li><strong>점심시간:</strong> 3교시와 4교시 사이에 예약 및 대관 가능</li>
+          <li><strong>주말 및 공휴일:</strong> 예약 및 운영 불가</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 달력 메인 화면 -->
+    <section class="calendar-container">
+      <!-- 달력 월 조작 헤더 -->
+      <div class="calendar-header">
+        <h2 class="calendar-title" id="calendarTitle">2026년 7월</h2>
+        <div class="nav-buttons">
+          <button class="btn-icon" id="prevMonthBtn" aria-label="이전 달">&lt;</button>
+          <button class="btn-icon" id="nextMonthBtn" aria-label="다음 달">&gt;</button>
+        </div>
+      </div>
+
+      <!-- 달력 범례 -->
+      <div class="calendar-legend">
+        <div class="legend-item">
+          <div class="legend-color color-today"></div>
+          <span>오늘</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color color-booked"></div>
+          <span>예약 있음</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color color-disabled"></div>
+          <span>대관 미운영 (주말)</span>
+        </div>
+      </div>
+
+      <!-- 달력 그리드 본체 -->
+      <div class="calendar-grid-wrapper">
+        <!-- 요일 헤더 -->
+        <div class="weekday-header">
+          <div>일</div>
+          <div>월</div>
+          <div>화</div>
+          <div>수</div>
+          <div>목</div>
+          <div>금</div>
+          <div>토</div>
+        </div>
+        <!-- 날짜 셀 영역 -->
+        <div class="days-grid" id="daysGrid">
+          <!-- JS로 동적 생성 -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 예약 팝업 모달창 -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalDateTitle">2026년 7월 1일</h2>
+        <button class="modal-close" id="modalCloseBtn" aria-label="닫기">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        <!-- 1단계: 차시 선택 -->
+        <div class="modal-section-title">⏱ 대관 차시 선택</div>
+        <div class="period-selector-grid" id="periodSelectorGrid">
+          <!-- JS로 요일 및 예약 여부에 따라 동적 렌더링 -->
+        </div>
+
+        <!-- 2단계 (신규 예약 시): 예약 양식 -->
+        <div class="booking-form-box" id="bookingFormBox">
+          <div class="modal-section-title" style="margin-top: 1rem;">✍ 예약 정보 입력</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="inputTeacher" class="required">예약 교사명</label>
+              <input type="text" id="inputTeacher" placeholder="교사 성함을 입력하세요" required>
+            </div>
+            <div class="form-group">
+              <label for="inputClass">대상 학급/단체</label>
+              <input type="text" id="inputClass" placeholder="예: 3학년 2반, 학생회 등">
+            </div>
+            <div class="form-group full-width">
+              <label for="inputPurpose">사용 목적</label>
+              <input type="text" id="inputPurpose" placeholder="원탁토론, 모둠 활동, 동아리 회의 등 구체적으로 적어주세요">
+            </div>
+            <div class="form-group">
+              <label for="inputSize">예상 사용 인원</label>
+              <select id="inputSize">
+                <option value="10">10명 미만</option>
+                <option value="15">10명 ~ 15명</option>
+                <option value="20" selected>15명 ~ 20명</option>
+                <option value="25">20명 ~ 25명</option>
+                <option value="30">25명 ~ 30명</option>
+                <option value="35">30명 이상 (실 최대 수용)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2단계 (이미 예약된 경우): 예약 상세 확인 -->
+        <div class="reserved-view-box" id="reservedViewBox">
+          <div class="modal-section-title">🔒 예약 내역 정보</div>
+          <div class="reserved-info-grid">
+            <div class="reserved-info-item">
+              <span class="reserved-label">예약 교사</span>
+              <span class="reserved-value" id="viewTeacher">-</span>
+            </div>
+            <div class="reserved-info-item">
+              <span class="reserved-label">대상 학급/단체</span>
+              <span class="reserved-value" id="viewClass">-</span>
+            </div>
+            <div class="reserved-info-item" style="grid-column: span 2;">
+              <span class="reserved-label">사용 목적</span>
+              <span class="reserved-value" id="viewPurpose">-</span>
+            </div>
+            <div class="reserved-info-item">
+              <span class="reserved-label">예상 사용 인원</span>
+              <span class="reserved-value" id="viewSize">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnCancelModal">취소</button>
+        <button class="btn btn-danger" id="btnCancelBooking" style="display: none;">예약 취소</button>
+        <button class="btn btn-primary" id="btnSubmitBooking" style="display: none;">예약 완료</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림창 컨테이너 -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
