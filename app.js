@@ -1,15 +1,117 @@
 // 원탁토의실 예약 시스템 애플리케이션 로직 (app.js)
 
-// 1. 애플리케이션 상태 관리
+// 1. Apps Script 소스코드 템플릿
+const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = sheet.getDataRange().getValues();
+  var reservations = {};
+  
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var dateStr = row[0];
+    var periodId = row[1];
+    if (!dateStr || !periodId) continue;
+    
+    // 날짜 객체 포맷 변환
+    if (dateStr instanceof Date) {
+      var y = dateStr.getFullYear();
+      var m = String(dateStr.getMonth() + 1).padStart(2, '0');
+      var d = String(dateStr.getDate()).padStart(2, '0');
+      dateStr = y + '-' + m + '-' + d;
+    } else {
+      dateStr = String(dateStr).trim();
+    }
+    
+    periodId = String(periodId).trim();
+    
+    if (!reservations[dateStr]) {
+      reservations[dateStr] = {};
+    }
+    reservations[dateStr][periodId] = {
+      teacher: String(row[2]).trim(),
+      purpose: String(row[3]).trim(),
+      targetClass: String(row[4]).trim(),
+      size: String(row[5]).trim(),
+      timestamp: row[6] ? new Date(row[6]).getTime() : Date.now()
+    };
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify(reservations))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var params;
+  try {
+    params = JSON.parse(e.postData.contents);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var action = params.action;
+  var dateStr = params.date;
+  var periodId = String(params.period).trim();
+  
+  var data = sheet.getDataRange().getValues();
+  var rowIndex = -1;
+  
+  // 기존 예약이 있는지 탐색
+  for (var i = 1; i < data.length; i++) {
+    var rowDate = data[i][0];
+    if (rowDate instanceof Date) {
+      var y = rowDate.getFullYear();
+      var m = String(rowDate.getMonth() + 1).padStart(2, '0');
+      var d = String(rowDate.getDate()).padStart(2, '0');
+      rowDate = y + '-' + m + '-' + d;
+    } else {
+      rowDate = String(rowDate).trim();
+    }
+    if (rowDate === dateStr && String(data[i][1]).trim() === periodId) {
+      rowIndex = i + 1; // 1-based index
+      break;
+    }
+  }
+  
+  if (action === 'save') {
+    var booking = params.booking;
+    if (rowIndex !== -1) {
+      // 기존행 업데이트
+      sheet.getRange(rowIndex, 3).setValue(booking.teacher);
+      sheet.getRange(rowIndex, 4).setValue(booking.purpose);
+      sheet.getRange(rowIndex, 5).setValue(booking.targetClass);
+      sheet.getRange(rowIndex, 6).setValue(booking.size);
+      sheet.getRange(rowIndex, 7).setValue(new Date(booking.timestamp));
+    } else {
+      // 신규행 추가
+      sheet.appendRow([dateStr, periodId, booking.teacher, booking.purpose, booking.targetClass, booking.size, new Date(booking.timestamp)]);
+    }
+  } else if (action === 'delete') {
+    if (rowIndex !== -1) {
+      sheet.deleteRow(rowIndex);
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({ status: 'success' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+
+// 2. 애플리케이션 상태 관리
 const state = {
   currentYear: 2026,
   currentMonth: 6, // 0-indexed (6 = 7월)
   reservations: {},
   selectedDate: null,
-  selectedPeriod: null
+  selectedPeriod: null,
+  
+  // 클라우드 동기화 관련 상태
+  isSyncMode: false,
+  syncUrl: null,
+  pollingIntervalId: null
 };
 
-// 2. 예약 가능 기간 제한 상수
+// 3. 예약 가능 기간 제한 상수
 const LIMITS = {
   startYear: 2026,
   startMonth: 6, // 7월
@@ -17,11 +119,8 @@ const LIMITS = {
   endMonth: 0  // 1월
 };
 
-// 3. 차시 정보 설정
-// 월, 화 : 1~7교시, 점심시간, 방과후
-// 수, 목, 금 : 1~6교시, 점심시간, 방과후
+// 4. 차시 정보 설정
 const PERIODS_CONFIG = {
-  // 월요일(1), 화요일(2)
   monTue: [
     { id: '1', name: '1교시', time: '09:00 - 09:45' },
     { id: '2', name: '2교시', time: '09:55 - 10:40' },
@@ -33,7 +132,6 @@ const PERIODS_CONFIG = {
     { id: '7', name: '7교시', time: '15:20 - 16:05' },
     { id: 'afterschool', name: '방과후시간', time: '16:15 - 17:30' }
   ],
-  // 수요일(3), 목요일(4), 금요일(5)
   wedThuFri: [
     { id: '1', name: '1교시', time: '09:00 - 09:45' },
     { id: '2', name: '2교시', time: '09:55 - 10:40' },
@@ -46,18 +144,31 @@ const PERIODS_CONFIG = {
   ]
 };
 
-// 4. 초기화 함수
+// 5. 초기화 함수
 document.addEventListener('DOMContentLoaded', () => {
-  loadReservations();
+  // 스크립트 복사용 텍스트 기본 셋팅
+  document.getElementById('appsScriptCode').value = APPS_SCRIPT_TEMPLATE;
+
+  // 동기화 설정 로드
+  loadSyncConfiguration();
+  
+  // 데이터 로드 (클라우드 vs 로컬)
+  if (state.isSyncMode) {
+    fetchReservationsFromServer();
+    startPolling();
+  } else {
+    loadLocalReservations();
+    renderCalendar();
+    updateDashboardStats();
+    renderUpcomingBookings();
+  }
+  
   initCalendarHeader();
-  renderCalendar();
-  updateDashboardStats();
-  renderUpcomingBookings();
   setupEventListeners();
 });
 
-// 5. 로컬 스토리지 데이터 로드 및 저장
-function loadReservations() {
+// 6. 데이터 로드 및 저장 (로컬 모드)
+function loadLocalReservations() {
   const data = localStorage.getItem('roundtable_reservations');
   if (data) {
     try {
@@ -67,7 +178,7 @@ function loadReservations() {
       state.reservations = {};
     }
   } else {
-    // 데모용 샘플 데이터 삽입 (사용자가 처음 접속했을 때 썰렁하지 않게 일부 가상 예약 세팅)
+    // 샘플 데이터 삽입
     state.reservations = {
       '2026-07-06': {
         '1': { teacher: '김수현', purpose: '국어 모의 법정 토론 수업', targetClass: '3학년 1반', size: '28', timestamp: Date.now() },
@@ -80,15 +191,110 @@ function loadReservations() {
         '3': { teacher: '최민수', purpose: '역사 역사인물 모의 청문회', targetClass: '2학년 3반', size: '30', timestamp: Date.now() }
       }
     };
-    saveReservations();
+    saveLocalReservations();
   }
 }
 
-function saveReservations() {
+function saveLocalReservations() {
   localStorage.setItem('roundtable_reservations', JSON.stringify(state.reservations));
 }
 
-// 6. 달력 헤더 제어 (연도, 월 표시 및 이전/다음 버튼 비활성화 처리)
+// 7. 클라우드 동기화 제어 로직 (Google Apps Script API)
+function loadSyncConfiguration() {
+  const savedUrl = localStorage.getItem('roundtable_sync_url');
+  if (savedUrl && savedUrl.trim() !== '') {
+    state.syncUrl = savedUrl;
+    state.isSyncMode = true;
+    updateSyncUI(true);
+  } else {
+    state.syncUrl = null;
+    state.isSyncMode = false;
+    updateSyncUI(false);
+  }
+}
+
+function updateSyncUI(isActive) {
+  const badge = document.getElementById('syncStatusBadge');
+  const banner = document.getElementById('localWarningBanner');
+  const btnDisconnect = document.getElementById('btnDisconnectCloud');
+
+  if (isActive) {
+    badge.className = 'status-badge badge-cloud';
+    badge.innerText = '클라우드 동기화 중';
+    banner.style.display = 'none';
+    btnDisconnect.style.display = 'block';
+  } else {
+    badge.className = 'status-badge badge-local';
+    badge.innerText = '로컬 모드';
+    banner.style.display = 'block';
+    btnDisconnect.style.display = 'none';
+  }
+}
+
+// 서버에서 최신 예약 내역 전체 긁어오기 (GET)
+async function fetchReservationsFromServer() {
+  if (!state.isSyncMode || !state.syncUrl) return;
+  
+  try {
+    const response = await fetch(state.syncUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!response.ok) throw new Error('서버 응답 비정상');
+    
+    const data = await response.json();
+    state.reservations = data || {};
+    
+    // 달력 및 스탯 갱신
+    renderCalendar();
+    updateDashboardStats();
+    renderUpcomingBookings();
+  } catch (error) {
+    console.error('서버 데이터 동기화 실패:', error);
+    // 동기화 실패하더라도 UI에 큰 에러 모달을 띄우진 않고 작은 콘솔 경고 및 알림 처리
+  }
+}
+
+// 서버에 예약 추가/삭제 동기화 전송 (POST)
+// Google Apps Script CORS 제약을 회피하기 위해 text/plain 헤더 사용
+async function syncBookingToServer(action, date, period, booking = null) {
+  if (!state.isSyncMode || !state.syncUrl) return true; // 로컬 모드일 때는 무조건 성공 처리
+  
+  try {
+    const response = await fetch(state.syncUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8' // OPTIONS 프리플라이트를 피하기 위한 헤더 세팅
+      },
+      body: JSON.stringify({ action, date, period, booking })
+    });
+    
+    // 구글 웹앱 리디렉션 응답으로 인해 응답 본문을 읽기 힘들 수 있으나 성공 응답은 떨어짐
+    return true;
+  } catch (error) {
+    console.error('서버 동기화 중 에러:', error);
+    showToast('클라우드 서버 동기화에 실패했습니다. 인터넷을 연결 상태를 확인하세요.', 'error');
+    return false;
+  }
+}
+
+// 자동 폴링 시작/종료
+function startPolling() {
+  stopPolling();
+  // 10초마다 자동 백그라운드 동기화 실행
+  state.pollingIntervalId = setInterval(() => {
+    fetchReservationsFromServer();
+  }, 10000);
+}
+
+function stopPolling() {
+  if (state.pollingIntervalId) {
+    clearInterval(state.pollingIntervalId);
+    state.pollingIntervalId = null;
+  }
+}
+
+// 8. 달력 헤더 제어
 function initCalendarHeader() {
   updateCalendarTitle();
   checkNavigationLimits();
@@ -103,14 +309,12 @@ function checkNavigationLimits() {
   const prevBtn = document.getElementById('prevMonthBtn');
   const nextBtn = document.getElementById('nextMonthBtn');
 
-  // 이전 버튼 비활성화 조건: 2026년 7월(6) 이하일 때
   if (state.currentYear === LIMITS.startYear && state.currentMonth === LIMITS.startMonth) {
     prevBtn.disabled = true;
   } else {
     prevBtn.disabled = false;
   }
 
-  // 다음 버튼 비활성화 조건: 2027년 1월(0) 이상일 때
   if (state.currentYear === LIMITS.endYear && state.currentMonth === LIMITS.endMonth) {
     nextBtn.disabled = true;
   } else {
@@ -118,24 +322,20 @@ function checkNavigationLimits() {
   }
 }
 
-// 7. 달력 렌더링 로직
+// 9. 달력 렌더링 로직
 function renderCalendar() {
   const daysGrid = document.getElementById('daysGrid');
   daysGrid.innerHTML = '';
 
-  // 해당 월의 첫 번째 날 구하기
   const firstDay = new Date(state.currentYear, state.currentMonth, 1);
-  // 첫 번째 날의 요일 (0: 일, 1: 월, ..., 6: 토)
   const firstDayIndex = firstDay.getDay();
 
-  // 해당 월의 마지막 날 구하기
   const lastDay = new Date(state.currentYear, state.currentMonth + 1, 0);
   const totalDays = lastDay.getDate();
 
-  // 이전 달의 마지막 날짜 구하기 (padding용)
   const prevLastDay = new Date(state.currentYear, state.currentMonth, 0).getDate();
 
-  // 1. 이전 달 날짜 패딩 채우기
+  // 1. 이전 달 날짜 패딩
   for (let i = firstDayIndex; i > 0; i--) {
     const dayCell = document.createElement('div');
     dayCell.className = 'day-cell other-month';
@@ -144,21 +344,19 @@ function renderCalendar() {
     daysGrid.appendChild(dayCell);
   }
 
-  // 오늘 날짜 객체
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  // 2. 해당 월 날짜 채우기
+  // 2. 해당 월 날짜 렌더링
   for (let day = 1; day <= totalDays; day++) {
     const dayCell = document.createElement('div');
     
-    // YYYY-MM-DD 날짜 문자열 포맷
     const formattedMonth = String(state.currentMonth + 1).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
     const dateStr = `${state.currentYear}-${formattedMonth}-${formattedDay}`;
 
     const cellDate = new Date(state.currentYear, state.currentMonth, day);
-    const dayOfWeek = cellDate.getDay(); // 0: 일, 6: 토
+    const dayOfWeek = cellDate.getDay();
     
     let isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
     let classList = ['day-cell'];
@@ -179,18 +377,14 @@ function renderCalendar() {
     dayCell.className = classList.join(' ');
     dayCell.dataset.date = dateStr;
 
-    // 날짜 번호 레이블
     let contentHtml = `<span class="day-number">${day}</span>`;
 
-    // 예약 현황 점 및 뱃지 표시
+    // 예약 뱃지 표시
     const dayReservations = state.reservations[dateStr];
     if (dayReservations && !isWeekend) {
       const bookedCount = Object.keys(dayReservations).length;
       if (bookedCount > 0) {
-        // 예약 개수 뱃지
         contentHtml += `<span class="booking-count-badge">${bookedCount}개 예약</span>`;
-        
-        // 작은 도트 표시기
         contentHtml += `<div class="booking-dots">`;
         for (let k = 0; k < bookedCount; k++) {
           contentHtml += `<span class="booking-dot"></span>`;
@@ -201,7 +395,6 @@ function renderCalendar() {
 
     dayCell.innerHTML = contentHtml;
 
-    // 클릭 이벤트 추가 (주말이 아닐 때만 작동)
     if (!isWeekend) {
       dayCell.addEventListener('click', () => openReservationModal(dateStr));
     } else {
@@ -211,7 +404,7 @@ function renderCalendar() {
     daysGrid.appendChild(dayCell);
   }
 
-  // 3. 다음 달 날짜 패딩 채우기 (총 42칸 기준 남은 칸 채우기)
+  // 3. 다음 달 날짜 패딩
   const totalCells = firstDayIndex + totalDays;
   const nextMonthPadding = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
   for (let i = 1; i <= nextMonthPadding; i++) {
@@ -222,7 +415,7 @@ function renderCalendar() {
   }
 }
 
-// 8. 모달 제어 로직
+// 10. 모달 창 제어 로직
 function openReservationModal(dateStr) {
   state.selectedDate = dateStr;
   state.selectedPeriod = null;
@@ -231,21 +424,15 @@ function openReservationModal(dateStr) {
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   const formattedHeaderDate = dateObj.toLocaleDateString('ko-KR', options);
 
-  // 모달 헤더 세팅
   document.getElementById('modalDateTitle').innerText = formattedHeaderDate;
-
-  // 요일별 차시 템플릿 로드
   renderPeriodSelector(dateObj);
 
-  // 폼 및 정보 뷰 숨기기
   document.getElementById('bookingFormBox').classList.remove('active');
   document.getElementById('reservedViewBox').classList.remove('active');
   
-  // 예약 등록/취소 버튼 숨김 및 활성화 초기화
   document.getElementById('btnSubmitBooking').style.display = 'none';
   document.getElementById('btnCancelBooking').style.display = 'none';
 
-  // 모달 보이기
   document.getElementById('modalOverlay').classList.add('active');
 }
 
@@ -255,12 +442,11 @@ function closeReservationModal() {
   state.selectedPeriod = null;
 }
 
-// 요일별 차시 렌더링
 function renderPeriodSelector(dateObj) {
   const periodGrid = document.getElementById('periodSelectorGrid');
   periodGrid.innerHTML = '';
 
-  const dayOfWeek = dateObj.getDay(); // 1=월, 2=화, 3=수, 4=목, 5=금
+  const dayOfWeek = dateObj.getDay();
   let periods = [];
 
   if (dayOfWeek === 1 || dayOfWeek === 2) {
@@ -289,18 +475,14 @@ function renderPeriodSelector(dateObj) {
       <span class="period-status ${statusClass}">${statusText}</span>
     `;
 
-    // 차시 클릭 이벤트
     slot.addEventListener('click', () => selectPeriodSlot(p.id, isReserved, slot));
-
     periodGrid.appendChild(slot);
   });
 }
 
-// 특정 차시 선택 시 처리
 function selectPeriodSlot(periodId, isReserved, slotElement) {
   state.selectedPeriod = periodId;
 
-  // 이전 선택 상태 초기화
   document.querySelectorAll('.period-slot').forEach(el => {
     el.classList.remove('selected');
   });
@@ -313,7 +495,6 @@ function selectPeriodSlot(periodId, isReserved, slotElement) {
   const btnCancel = document.getElementById('btnCancelBooking');
 
   if (isReserved) {
-    // 예약 상세 정보 표시
     formBox.classList.remove('active');
     viewBox.classList.add('active');
     
@@ -326,14 +507,12 @@ function selectPeriodSlot(periodId, isReserved, slotElement) {
     document.getElementById('viewClass').innerText = info.targetClass || '(미입력)';
     document.getElementById('viewSize').innerText = info.size ? `${info.size}명` : '(미입력)';
   } else {
-    // 예약 폼 표시
     viewBox.classList.remove('active');
     formBox.classList.add('active');
     
     btnSubmit.style.display = 'block';
     btnCancel.style.display = 'none';
 
-    // 폼 인풋값 초기화
     document.getElementById('inputTeacher').value = '';
     document.getElementById('inputPurpose').value = '';
     document.getElementById('inputClass').value = '';
@@ -341,8 +520,8 @@ function selectPeriodSlot(periodId, isReserved, slotElement) {
   }
 }
 
-// 9. 예약 추가 및 삭제 비즈니스 로직
-function submitReservation() {
+// 11. 예약 신규 등록 및 취소 비즈니스 로직
+async function submitReservation() {
   if (!state.selectedDate || !state.selectedPeriod) {
     showToast('날짜와 차시를 선택해주세요.', 'error');
     return;
@@ -359,12 +538,7 @@ function submitReservation() {
     return;
   }
 
-  // 예약 객체 생성 및 상태 저장
-  if (!state.reservations[state.selectedDate]) {
-    state.reservations[state.selectedDate] = {};
-  }
-
-  state.reservations[state.selectedDate][state.selectedPeriod] = {
+  const bookingData = {
     teacher,
     purpose,
     targetClass,
@@ -372,53 +546,83 @@ function submitReservation() {
     timestamp: Date.now()
   };
 
-  saveReservations();
+  // 모달을 닫고 비동기 처리 돌림
   closeReservationModal();
-  renderCalendar();
-  updateDashboardStats();
-  renderUpcomingBookings();
-  showToast('예약이 성공적으로 완료되었습니다!', 'success');
+  showToast('예약을 처리하는 중입니다...', 'info');
+
+  // 서버 동기화 시도
+  const success = await syncBookingToServer('save', state.selectedDate, state.selectedPeriod, bookingData);
+  
+  if (success) {
+    // 성공 시 클라이언트 캐시 업데이트
+    if (!state.reservations[state.selectedDate]) {
+      state.reservations[state.selectedDate] = {};
+    }
+    state.reservations[state.selectedDate][state.selectedPeriod] = bookingData;
+    
+    if (!state.isSyncMode) {
+      saveLocalReservations(); // 로컬 모드일 때만 로컬 저장소 동기화
+    }
+
+    renderCalendar();
+    updateDashboardStats();
+    renderUpcomingBookings();
+    showToast('예약이 정상적으로 등록되었습니다!', 'success');
+  } else {
+    showToast('예약 등록을 실패했습니다. 인터넷 상태를 확인해 주세요.', 'error');
+  }
 }
 
-function cancelReservation() {
+async function cancelReservation() {
   if (!state.selectedDate || !state.selectedPeriod) return;
 
-  if (confirm('선택하신 차시의 전체 대관 예약을 취소하시겠습니까?')) {
-    if (state.reservations[state.selectedDate] && state.reservations[state.selectedDate][state.selectedPeriod]) {
-      delete state.reservations[state.selectedDate][state.selectedPeriod];
-      
-      // 해당 날짜에 예약이 더 이상 없으면 빈 객체 삭제
-      if (Object.keys(state.reservations[state.selectedDate]).length === 0) {
-        delete state.reservations[state.selectedDate];
+  if (confirm('선택하신 차시의 대관 예약을 취소하시겠습니까?')) {
+    const targetDate = state.selectedDate;
+    const targetPeriod = state.selectedPeriod;
+    
+    closeReservationModal();
+    showToast('예약 취소를 요청하는 중입니다...', 'info');
+
+    // 서버 동기화 시도
+    const success = await syncBookingToServer('delete', targetDate, targetPeriod);
+
+    if (success) {
+      // 성공 시 클라이언트 캐시 업데이트
+      if (state.reservations[targetDate] && state.reservations[targetDate][targetPeriod]) {
+        delete state.reservations[targetDate][targetPeriod];
+        if (Object.keys(state.reservations[targetDate]).length === 0) {
+          delete state.reservations[targetDate];
+        }
       }
 
-      saveReservations();
-      closeReservationModal();
+      if (!state.isSyncMode) {
+        saveLocalReservations();
+      }
+
       renderCalendar();
       updateDashboardStats();
       renderUpcomingBookings();
-      showToast('예약이 정상적으로 취소되었습니다.', 'success');
+      showToast('예약이 성공적으로 취소되었습니다.', 'success');
+    } else {
+      showToast('예약 취소 처리에 실패했습니다. 인터넷 상태를 확인해 주세요.', 'error');
     }
   }
 }
 
-// 10. 통계 및 사이드바 제어
+// 12. 통계 및 사이드바 제어
 function updateDashboardStats() {
-  // 전체 예약 건수 계산
   let totalCount = 0;
   Object.keys(state.reservations).forEach(date => {
     totalCount += Object.keys(state.reservations[date]).length;
   });
   document.getElementById('statTotalBookings').innerText = totalCount;
 
-  // 오늘 날짜 기준 현황 계산
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   
   const todayBookings = state.reservations[todayStr];
   const todayBookedCount = todayBookings ? Object.keys(todayBookings).length : 0;
   
-  // 오늘 요일에 맞춰 사용 가능한 전체 차시 수 알아내기
   const dayOfWeek = today.getDay();
   let totalSlotsToday = 0;
   if (dayOfWeek >= 1 && dayOfWeek <= 2) {
@@ -430,7 +634,7 @@ function updateDashboardStats() {
   const availableSlotsToday = Math.max(0, totalSlotsToday - todayBookedCount);
   document.getElementById('statTodayAvailable').innerText = dayOfWeek === 0 || dayOfWeek === 6 ? '휴무' : `${availableSlotsToday}개`;
   
-  // 가장 많이 예약된 교사 찾기
+  // 최다 대관 교사 통계
   const teacherStats = {};
   Object.keys(state.reservations).forEach(date => {
     const dayRes = state.reservations[date];
@@ -452,7 +656,6 @@ function updateDashboardStats() {
   document.getElementById('statTopTeacher').innerText = topTeacher;
 }
 
-// 사이드바 - 최근/다가올 예약 렌더링
 function renderUpcomingBookings() {
   const container = document.getElementById('upcomingBookingList');
   container.innerHTML = '';
@@ -461,20 +664,15 @@ function renderUpcomingBookings() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // 예약 평탄화 및 날짜 필터링
   Object.keys(state.reservations).forEach(dateStr => {
     const dateObj = new Date(dateStr);
-    // 다가올 날짜 또는 오늘 날짜만 필터링
     if (dateObj >= today) {
       const dayRes = state.reservations[dateStr];
       Object.keys(dayRes).forEach(pId => {
         const item = dayRes[pId];
-        
-        // 해당 날짜의 요일 구하기
         const dayOfWeek = dateObj.getDay();
         let pName = pId;
         
-        // 차시 번호에 매칭되는 한글 이름 찾기
         const pList = (dayOfWeek === 1 || dayOfWeek === 2) ? PERIODS_CONFIG.monTue : PERIODS_CONFIG.wedThuFri;
         const matched = pList.find(x => x.id === pId);
         if (matched) pName = matched.name;
@@ -490,12 +688,8 @@ function renderUpcomingBookings() {
     }
   });
 
-  // 날짜 및 차시 순으로 정렬
   list.sort((a, b) => {
-    if (a.dateStr !== b.dateStr) {
-      return a.dateObj - b.dateObj;
-    }
-    // 차시 정렬 (숫자로 변환 시도, 'lunch' 및 'afterschool' 정렬 순위 설정)
+    if (a.dateStr !== b.dateStr) return a.dateObj - b.dateObj;
     const getOrder = (id) => {
       if (id === 'lunch') return 3.5;
       if (id === 'afterschool') return 99;
@@ -509,13 +703,11 @@ function renderUpcomingBookings() {
     return;
   }
 
-  // 상위 5개만 목록에 렌더링
   const displayItems = list.slice(0, 6);
   displayItems.forEach(item => {
     const el = document.createElement('div');
     el.className = 'booking-item';
     
-    // 날짜 포맷 (M월 D일 요일)
     const formattedDate = item.dateObj.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', weekday: 'short' });
     
     el.innerHTML = `
@@ -524,23 +716,116 @@ function renderUpcomingBookings() {
       <span class="booking-item-info">${item.targetClass || '전체 대관'} | ${item.purpose || '수업'}</span>
     `;
 
-    // 클릭 시 바로 해당 날짜 예약 모달을 열어주는 편의기능 제공
     el.addEventListener('click', () => {
       openReservationModal(item.dateStr);
-      // 모달이 열린 후 바로 해당 차시를 자동 선택해줌
       setTimeout(() => {
         const slotEl = document.querySelector(`.period-slot[data-period-id="${item.periodId}"]`);
         if (slotEl) slotEl.click();
-      }, 100);
+      }, 150);
     });
 
     container.appendChild(el);
   });
 }
 
-// 11. 이벤트 리스너 세팅 및 기타 유틸
+// 13. 동기화 설정 인터페이스 제어
+function openSettingsModal() {
+  const modal = document.getElementById('settingsModalOverlay');
+  const inputUrl = document.getElementById('inputWebappUrl');
+  
+  if (state.syncUrl) {
+    inputUrl.value = state.syncUrl;
+  } else {
+    inputUrl.value = '';
+  }
+
+  updateSyncUI(state.isSyncMode);
+  modal.classList.add('active');
+}
+
+function closeSettingsModal() {
+  document.getElementById('settingsModalOverlay').classList.remove('active');
+}
+
+// 구글 시트 연동 설정 완료 저장
+async function saveSettings() {
+  const urlInput = document.getElementById('inputWebappUrl').value.trim();
+  
+  if (urlInput === '') {
+    showToast('구글 웹 앱 URL 주소를 입력해 주세요.', 'error');
+    return;
+  }
+  
+  if (!urlInput.startsWith('https://script.google.com/')) {
+    showToast('올바른 구글 Apps Script 웹앱 URL이 아닙니다.', 'error');
+    return;
+  }
+
+  showToast('연동 테스트 진행 중...', 'info');
+  
+  try {
+    // 1단계: 연결 가능 여부 확인 테스트 (GET 요청)
+    const response = await fetch(urlInput);
+    if (!response.ok) throw new Error();
+    
+    // 정상적인 응답이 올 경우 연동 성공 처리
+    localStorage.setItem('roundtable_sync_url', urlInput);
+    state.syncUrl = urlInput;
+    state.isSyncMode = true;
+    
+    // UI 업데이트
+    updateSyncUI(true);
+    closeSettingsModal();
+    
+    // 즉시 최신 데이터 긁어오기 및 백그라운드 주기 타이머 작동
+    showToast('구글 스프레드시트 연동 성공!', 'success');
+    fetchReservationsFromServer();
+    startPolling();
+  } catch (error) {
+    showToast('연동에 실패했습니다. 웹앱 URL 및 배포 설정(모든 사용자 권한)을 확인하세요.', 'error');
+  }
+}
+
+// 연동 해제 및 로컬 모드로 회귀
+function disconnectCloud() {
+  if (confirm('클라우드 동기화를 해제하고 로컬 모드로 돌아가시겠습니까? (로컬 PC 브라우저에 임시 저장된 데이터가 복원됩니다.)')) {
+    stopPolling();
+    localStorage.removeItem('roundtable_sync_url');
+    state.syncUrl = null;
+    state.isSyncMode = false;
+    
+    updateSyncUI(false);
+    closeSettingsModal();
+    
+    // 기존 로컬 예약 데이터 리셋 및 재랜더링
+    loadLocalReservations();
+    renderCalendar();
+    updateDashboardStats();
+    renderUpcomingBookings();
+    
+    showToast('클라우드 동기화 해제 완료 (로컬 모드 회귀)', 'success');
+  }
+}
+
+// 클립보드에 스크립트 복사 기능
+function copyAppsScriptCode() {
+  const textarea = document.getElementById('appsScriptCode');
+  textarea.select();
+  textarea.setSelectionRange(0, 99999); // 모바일 기기 호환성
+
+  try {
+    navigator.clipboard.writeText(textarea.value);
+    showToast('Apps Script 코드가 클립보드에 복사되었습니다!', 'success');
+  } catch (err) {
+    // 클립보드 API 미지원 환경 대비 fallback
+    document.execCommand('copy');
+    showToast('코드가 복사되었습니다.', 'success');
+  }
+}
+
+// 14. 이벤트 리스너 설정
 function setupEventListeners() {
-  // 이전달 버튼 클릭
+  // 이전달/다음달
   document.getElementById('prevMonthBtn').addEventListener('click', () => {
     if (state.currentMonth === 0) {
       state.currentMonth = 11;
@@ -550,10 +835,13 @@ function setupEventListeners() {
     }
     updateCalendarTitle();
     checkNavigationLimits();
-    renderCalendar();
+    if (state.isSyncMode) {
+      fetchReservationsFromServer();
+    } else {
+      renderCalendar();
+    }
   });
 
-  // 다음달 버튼 클릭
   document.getElementById('nextMonthBtn').addEventListener('click', () => {
     if (state.currentMonth === 11) {
       state.currentMonth = 0;
@@ -563,37 +851,50 @@ function setupEventListeners() {
     }
     updateCalendarTitle();
     checkNavigationLimits();
-    renderCalendar();
-  });
-
-  // 모달 닫기
-  document.getElementById('modalCloseBtn').addEventListener('click', closeReservationModal);
-  document.getElementById('btnCancelModal').addEventListener('click', closeReservationModal);
-  
-  // 모달 바깥 백드롭 영역 클릭 시 닫기
-  document.getElementById('modalOverlay').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('modalOverlay')) {
-      closeReservationModal();
+    if (state.isSyncMode) {
+      fetchReservationsFromServer();
+    } else {
+      renderCalendar();
     }
   });
 
-  // 예약 등록 및 예약 취소 액션
+  // 예약 모달 닫기
+  document.getElementById('modalCloseBtn').addEventListener('click', closeReservationModal);
+  document.getElementById('btnCancelModal').addEventListener('click', closeReservationModal);
+  document.getElementById('modalOverlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('modalOverlay')) closeReservationModal();
+  });
+
+  // 예약 등록/삭제 동작
   document.getElementById('btnSubmitBooking').addEventListener('click', submitReservation);
   document.getElementById('btnCancelBooking').addEventListener('click', cancelReservation);
+
+  // 설정 모달 트리거
+  document.getElementById('btnOpenSettings').addEventListener('click', openSettingsModal);
+  document.getElementById('localWarningBanner').addEventListener('click', openSettingsModal);
+  document.getElementById('settingsModalCloseBtn').addEventListener('click', closeSettingsModal);
+  document.getElementById('btnCancelSettings').addEventListener('click', closeSettingsModal);
+  document.getElementById('settingsModalOverlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('settingsModalOverlay')) closeSettingsModal();
+  });
+
+  // 설정 저장 및 해제
+  document.getElementById('btnSaveSettings').addEventListener('click', saveSettings);
+  document.getElementById('btnDisconnectCloud').addEventListener('click', disconnectCloud);
+  document.getElementById('btnCopyScript').addEventListener('click', copyAppsScriptCode);
 }
 
-// 알림 메시지 팝업 기능
+// Toast 알림 팝업 유틸
 function showToast(message, type = 'success') {
   const container = document.getElementById('toastContainer');
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   
-  const icon = type === 'success' ? '✓' : '⚠';
+  const icon = type === 'success' ? '✓' : (type === 'error' ? '⚠' : 'ℹ');
   toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
   
   container.appendChild(toast);
 
-  // 3초 후 자동 소멸
   setTimeout(() => {
     toast.remove();
   }, 3000);
