@@ -1,0 +1,22 @@
+{
+  "name": "둥근마루 원탁토의실 예약 시스템",
+  "short_name": "원탁예약",
+  "description": "중학교 교직원용 둥근마루 원탁토의실 사용 예약 시스템",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/fluency/192/000000/calendar.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/512/000000/calendar.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
